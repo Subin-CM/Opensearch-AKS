@@ -1,0 +1,106 @@
+trigger:
+- main
+
+variables:
+- group: opensearch-common-variables
+- group: opensearch-variables-dev
+
+stages:
+- stage: OPENSEARCH_DEPLOY_DEV
+  displayName: Helm Deploy to DEV Environment
+  dependsOn: []
+  condition: eq(variables['DEPLOY_TO'], 'DEV')
+  jobs:
+  - deployment: Deploy
+    pool:
+      name: NAME_OF_THE_AZUREDEVOPS_AGENT
+    environment: 'NAME_OF_THE_ENVIRONMENT'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - script: |
+              python3 os_config/set_env.py
+            env:
+              ENV: "DEV"
+              KUBECONFIG_FILEPATH: $(KUBECONFIG_FILEPATH_CREDENTIALS) #these values should be stored in azure devops variable group
+              PASSWORD_BASE64ENCODED: $(PASSWORD_BASE64ENCODED_DEV) #these values should be stored in azure devops variable group
+            displayName: 'update kube config files for opensearch credentials'
+
+          - task: Kubernetes@1
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'AKS-CLUSTER-SERVICE_CONNECTION'
+              namespace: 'dev'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: 'os_config/opensearch-credentials.yaml'
+              secretType: 'generic'
+            displayName: "Create opensearch credentials in Prod Environment"
+
+          - script: |
+              python3 os_config/set_env.py
+            env:
+              ENV: "DEV"
+              KUBECONFIG_FILEPATH: $(KUBECONFIG_FILEPATH_SECURITYCONFIG) #these values should be stored in azure devops variable group
+              HASHED_ADMIN_PASSWORD: $(HASHED_ADMIN_PASSWORD_DEV) #these values should be stored in azure devops variable group
+            displayName: 'update kube config files for opensearch security config'
+
+          - task: Kubernetes@1
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'AKS-CLUSTER-SERVICE_CONNECTION'
+              namespace: 'dev'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: 'os_config/opensearch-securityconfig-secret.yaml'
+              secretType: 'generic'
+            displayName: "Create opensearch security config in Prod Environment"
+
+          - task: HelmInstaller@0
+            inputs:
+              helmVersion: '2.14.1'
+              installKubectl: true
+            displayName: "Helm installer"
+
+          - task: Bash@3
+            inputs:
+              targetType: 'inline'
+              script: |
+                helm repo add opensearch-operator https://opensearch-project.github.io/opensearch-k8s-operator/
+                helm repo update
+            displayName: "Adding opensearch repo" 
+            
+          - task: HelmDeploy@0
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'AKS-CLUSTER-SERVICE_CONNECTION'
+              namespace: 'dev'
+              command: 'upgrade'
+              chartType: 'Name'
+              chartName: 'opensearch-operator/opensearch-operator'
+              releaseName: 'opensearch-operator'
+              chartVersion: '2.6.0'
+              valueFile: 'os_config/opensearch-operator-values.yaml'
+              waitForExecution: false
+              arguments: '--install --atomic --timeout 300s'
+            displayName: "Deploy Opensearch operator"
+          
+          - script: |
+              python3 os_config/set_env.py
+            env:
+              ENV: "DEV"
+              KUBECONFIG_FILEPATH: $(KUBECONFIG_FILEPATH_OPENSEARCHCLUSTER)
+            displayName: 'update kube config files for opensearch cluster config'
+
+          - task: Kubernetes@1
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'AKS-CLUSTER-SERVICE_CONNECTION'
+              namespace: 'dev'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: 'os_config/opensearch-cluster.yaml'
+              secretType: 'generic'
+            displayName: "OpenSearch Deployment"

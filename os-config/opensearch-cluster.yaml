@@ -1,0 +1,117 @@
+apiVersion: opensearch.opster.io/v1
+kind: OpenSearchCluster
+metadata:
+  name: opensearch-cluster
+spec:
+  confMgmt:
+    smartScaler: true
+  general:
+    version: 2.17.0
+    httpPort: 9200
+    vendor: opensearch
+    pluginsList: ["repository-azure"]
+    setVMMaxMapCount: true
+    drainDataNodes: true
+    keystore:
+    - secret:
+        name: STORAGE_SECRET
+      keyMappings:
+        azure.client.default.account: azure.client.default.account
+        azure.client.default.key: azure.client.default.key
+    serviceName: opensearch-cluster
+  security:
+    config:
+      adminCredentialsSecret:
+        name: opensearch-credentials
+      securityConfigSecret:
+        name: opensearch-securityconfig-secret
+    tls:
+      http:
+        generate: true 
+      transport:
+        generate: true
+  dashboards:
+    additionalConfig:
+      opensearch_security.auth.multiple_auth_enabled: "true"
+      opensearch_security.auth.type: |
+        ["saml", "basicauth"]
+      server.xsrf.allowlist: |
+        ["/_plugins/_security/saml/acs/idpinitiated", "/_plugins/_security/saml/acs", "/_plugins/_security/saml/logout", "/_opendistro/_security/saml/acs"]
+    opensearchCredentialsSecret:
+      name: opensearch-credentials
+    tls:
+      enable: true
+      generate: true
+    version: 2.17.0
+    enable: true
+    replicas: 1
+    resources:
+      requests:
+         memory: "512Mi"
+         cpu: "200m"
+      limits:
+         memory: "512Mi"
+         cpu: "200m"
+  nodePools:
+    - component: masters
+      diskSize: "MASTER_STORAGE_SIZE"
+      replicas: REPLICA_MASTER
+      nodeSelector: 
+        kubernetes.azure.com/agentpool: master
+      jvm: -Xmx5120M -Xms5120M
+      resources:
+         requests:
+            memory: "10Gi"
+            cpu: "2500m"
+         limits:
+            memory: "10Gi"
+            cpu: "2500m"
+      roles:
+        - "data"
+        - "cluster_manager"
+      persistence:
+        pvc:
+          storageClass: default  # Set the name of the storage class to be used
+          accessModes: # You can change the accessMode
+          - ReadWriteOnce
+    - component: data
+      diskSize: "DATA_STORAGE_SIZE"
+      replicas: REPLICA_DATA
+      nodeSelector: 
+        kubernetes.azure.com/agentpool: data
+      jvm: -Xmx5120M -Xms5120M
+      resources:
+         requests:
+            memory: "10Gi"
+            cpu: "2500m"
+         limits:
+            memory: "10Gi"
+            cpu: "2500m"
+      roles:
+        - "data"
+      persistence:
+        pvc:
+          storageClass: default  # Set the name of the storage class to be used
+          accessModes: # You can change the accessMode
+          - ReadWriteOnce
+    - component: client
+      diskSize: "CLIENT_STORAGE_SIZE"
+      replicas: REPLICA_CLIENT
+      nodeSelector: 
+        kubernetes.azure.com/agentpool: client
+      jvm: -Xmx5120M -Xms5120M
+      resources:
+         requests:
+            memory: "10Gi"
+            cpu: "2500m"
+         limits:
+            memory: "10Gi"
+            cpu: "2500m"
+      roles:
+        - "client"
+      persistence:
+        pvc:
+          storageClass: default  # Set the name of the storage class to be used
+          accessModes: # You can change the accessMode
+          - ReadWriteOnce
+
